@@ -1,0 +1,103 @@
+.tajweed .ham_wasl,.tajweed .laam_shamsiyah,.tajweed .slnt {
+    color: #aaa
+}
+
+.tajweed .ham_wasl:hover,.tajweed .laam_shamsiyah:hover,.tajweed .slnt:hover {
+    background-color: #d7d7d7
+}
+
+.tajweed .madda_normal {
+    color: #537fff
+}
+
+.tajweed .madda_permissible {
+    color: #4050ff
+}
+
+.tajweed .madda_necessary {
+    color: #000ebc
+}
+
+.tajweed .madda_obligatory {
+    color: #2144c1
+}
+
+.tajweed .qalaqah {
+    color: #dd0008
+}
+
+.tajweed .qalaqah:hover {
+    background-color: #f3a6a9;
+    color: #dd0008
+}
+
+.tajweed .ikhafa_shafawi {
+    color: #d500b7
+}
+
+.tajweed .ikhafa_shafawi:hover {
+    background-color: #f0a6e6;
+    color: #d500b7
+}
+
+.tajweed .ikhafa {
+    color: #9400a8
+}
+
+.tajweed .ikhafa:hover {
+    background-color: #daa6e1;
+    color: #9400a8
+}
+
+.tajweed .iqlab {
+    color: #26bffd
+}
+
+.tajweed .iqlab:hover {
+    background-color: #92e5ff;
+    color: #0099c5
+}
+
+.tajweed .idgham_shafawi {
+    color: #58b800
+}
+
+.tajweed .idgham_shafawi:hover {
+    background-color: #bae890;
+    color: #58b800
+}
+
+.tajweed .idgham_ghunnah {
+    color: #169200
+}
+
+.tajweed .idgham_ghunnah:hover {
+    background-color: #9ce58e;
+    color: #169200
+}
+
+.tajweed .idgham_wo_ghunnah {
+    color: #169200
+}
+
+.tajweed .idgham_wo_ghunnah:hover {
+    background-color: #9ce58e;
+    color: #169200
+}
+
+.tajweed .idgham_mutajanisayn,.tajweed .idgham_mutaqaribayn {
+    color: #a1a1a1
+}
+
+.tajweed .idgham_mutajanisayn:hover,.tajweed .idgham_mutaqaribayn:hover {
+    background-color: #d7d7d7
+}
+
+.tajweed .ghunnah {
+    color: #ff7e1e
+}
+
+.tajweed .ghunnah:hover {
+    background-color: #ff7e1e;
+    color: #000
+}
