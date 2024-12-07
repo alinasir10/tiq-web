@@ -1,34 +1,68 @@
-import { writable } from 'svelte/store'
-import { firebaseAuth } from '$lib/firebase.js'
-import { onAuthStateChanged } from 'firebase/auth'
+// @ts-nocheck
+import { writable } from 'svelte/store';
+import { firebase } from '$lib/firebase.js';
+import { onAuthStateChanged } from 'firebase/auth';
 
-// Writable store to manage user authentication state
-export const userStore = writable({
-    isAuthenticated: false,
-    user: null,
-})
+const createUserStore = () => {
+	const { subscribe, set } = writable({
+		isAuthenticated: false,
+		user: null,
+		loading: true,
+		error: null
+	});
 
-// Function to initialize the authentication listener
-export const initializeAuth = () => {
-    if (typeof window !== 'undefined' && firebaseAuth) {
-        // Set up the authentication state listener
-        onAuthStateChanged(firebaseAuth, (authUser) => {
-            if (authUser) {
-                // Update the store with user details if logged in
-                userStore.set({
-                    isAuthenticated: true,
-                    user: {
-                        displayName: authUser.displayName || 'User Name',
-                        email: authUser.email,
-                    },
-                })
-            } else {
-                // Update the store to indicate no user is logged in
-                userStore.set({
-                    isAuthenticated: false,
-                    user: null,
-                })
-            }
-        })
-    }
-}
+	return {
+		subscribe,
+		initialize: () => {
+			if (typeof window === 'undefined' || !firebase?.auth) return;
+
+			onAuthStateChanged(
+				firebase.auth,
+				(user) => {
+					set({
+						isAuthenticated: !!user,
+						user: user
+							? {
+									displayName: user.displayName || 'User',
+									email: user.email,
+									uid: user.uid
+								}
+							: null,
+						loading: false,
+						error: null
+					});
+				},
+				(error) =>
+					set({
+						isAuthenticated: false,
+						user: null,
+						loading: false,
+						error: error.message
+					})
+			);
+		},
+		refresh: (user) => {
+			set({
+				isAuthenticated: !!user,
+				user: user
+					? {
+							displayName: user.displayName || 'User',
+							email: user.email,
+							uid: user.uid
+						}
+					: null,
+				loading: false,
+				error: null
+			});
+		},
+		reset: () =>
+			set({
+				isAuthenticated: false,
+				user: null,
+				loading: false,
+				error: null
+			})
+	};
+};
+
+export const userStore = createUserStore();
