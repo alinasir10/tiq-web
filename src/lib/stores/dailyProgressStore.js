@@ -2,6 +2,7 @@
 import { writable, get } from 'svelte/store';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { firebase } from '$lib/firebase';
+import { notificationStore } from './notificationStore';
 
 const createDailyProgressStore = () => {
 	const getPKTDate = (date = new Date()) => {
@@ -55,89 +56,82 @@ const createDailyProgressStore = () => {
 		return Math.max(...levels);
 	};
 
-	const checkYesterdayProgress = async (userId, level, unlockedLevels) => {
-		if (!level || !unlockedLevels) return false;
-
-		const yesterdayDoc = await getDoc(getDailyProgressDocRef(userId, level, YESTERDAY));
-		if (yesterdayDoc.exists()) {
-			return yesterdayDoc.data()?.progress === 100;
-		}
-
-		if (level > 1 && unlockedLevels.has(level)) {
-			const previousLevelDoc = await getDoc(
-				getDailyProgressDocRef(userId, level - 1, YESTERDAY)
-			);
-			return previousLevelDoc.exists() ? previousLevelDoc.data()?.progress === 100 : false;
-		}
-
-		return false;
-	};
-
 	const handleStreak = async (userId, progressData) => {
 		const userDoc = await getDoc(getUserDoc(userId));
 		if (!userDoc.exists()) return { streak: 0, unlockedLevels: new Set([1]) };
 
 		const userData = userDoc.data();
 		const unlockedLevels = new Set(userData.unlockedLevels || [1]);
-		const { data: streakData } = await getFirestoreDoc(getStreakRef(userId));
-		const currentStreak = streakData?.currentStreak || 0;
-
 		const highestLevel = getHighestRequiredLevel(unlockedLevels);
+
+		const streakRef = getStreakRef(userId);
+		const streakDoc = await getDoc(streakRef);
+		const streakData = streakDoc.data() || {};
+		const { currentStreak = 0, lastStreakDate, lastResetStreak } = streakData;
 
 		if (progressData.level !== highestLevel) {
 			return { streak: currentStreak, unlockedLevels };
 		}
 
-		const todayDoc = await getDoc(getDailyProgressDocRef(userId, highestLevel, TODAY));
-		const previousProgress = todayDoc.exists() ? todayDoc.data()?.progress : 0;
-		if (previousProgress === 100 && progressData.progress < 100) {
-			const newStreak = Math.max(0, currentStreak - 1);
-			await setDoc(getStreakRef(userId), {
-				currentStreak: newStreak,
-				lastUpdated: serverTimestamp()
-			});
+		let newStreak = currentStreak;
+
+		if (progressData.progress === 100) {
+			if (lastStreakDate === TODAY && streakData.lastProgress < 100) {
+				newStreak = Math.min(lastResetStreak || currentStreak + 1, currentStreak + 1);
+			} else if (lastStreakDate === YESTERDAY) {
+				newStreak = currentStreak + 1;
+			} else if (!lastStreakDate || lastStreakDate < YESTERDAY) {
+				newStreak = 1;
+			}
+		} else if (streakData.lastProgress === 100 && progressData.progress < 100) {
+			newStreak = Math.max(0, currentStreak - 1);
+			await setDoc(
+				streakRef,
+				{
+					currentStreak: newStreak,
+					lastResetStreak: currentStreak,
+					lastProgress: progressData.progress,
+					lastUpdated: serverTimestamp(),
+					lastStreakDate: TODAY
+				},
+				{ merge: true }
+			);
 			return { streak: newStreak, unlockedLevels };
 		}
 
-		const hadYesterdayComplete = await checkYesterdayProgress(
-			userId,
-			highestLevel,
-			unlockedLevels
-		);
-		const is100PercentComplete = progressData.progress === 100;
-
-		let newStreak = currentStreak;
-		if (hadYesterdayComplete) {
-			if (is100PercentComplete && previousProgress !== 100) {
-				newStreak = currentStreak + 1;
-			}
-		} else {
-			newStreak = is100PercentComplete ? 1 : 0;
-		}
-
-		const { unlockedLevels: updatedLevels, levelUnlocks } = await updateUnlockedLevels(
-			userId,
-			newStreak
-		);
-
-		await Promise.all([
-			setDoc(getStreakRef(userId), {
-				currentStreak: newStreak,
-				lastUpdated: serverTimestamp()
-			}),
-			setDoc(
-				getUserDoc(userId),
+		// Update streak if changed
+		if (newStreak !== currentStreak) {
+			await setDoc(
+				streakRef,
 				{
-					...userData,
-					unlockedLevels: Array.from(updatedLevels),
-					levelUnlocks,
-					lastUpdated: serverTimestamp()
+					currentStreak: newStreak,
+					lastProgress: progressData.progress,
+					lastUpdated: serverTimestamp(),
+					lastStreakDate: TODAY,
+					lastResetStreak: null // Clear reset value on successful increment
 				},
 				{ merge: true }
-			)
-		]);
+			);
 
-		return { streak: newStreak, unlockedLevels: updatedLevels, levelUnlocks };
+			const { unlockedLevels: updatedLevels, levelUnlocks } = await updateUnlockedLevels(
+				userId,
+				newStreak
+			);
+			return { streak: newStreak, unlockedLevels: updatedLevels, levelUnlocks };
+		}
+
+		// Always update last progress
+		await setDoc(
+			streakRef,
+			{
+				lastProgress: progressData.progress,
+				lastUpdated: serverTimestamp(),
+				lastStreakDate: TODAY
+			},
+			{ merge: true }
+		);
+
+		return { streak: currentStreak, unlockedLevels };
 	};
 
 	const updateUnlockedLevels = async (userId, currentStreak) => {
@@ -177,32 +171,94 @@ const createDailyProgressStore = () => {
 		return { unlockedLevels, levelUnlocks };
 	};
 
+	const validateStreak = async (userId, currentStreak, unlockedLevels) => {
+		if (currentStreak === 0) return { streak: 0, message: null };
+
+		const streakRef = getStreakRef(userId);
+		const highestLevel = getHighestRequiredLevel(unlockedLevels);
+
+		// Special handling for newly unlocked levels
+		if (highestLevel > 1) {
+			// For level 2 (unlocked at 10 days)
+			if (highestLevel === 2 && currentStreak === 10) {
+				return { streak: currentStreak, message: null };
+			}
+			// For level 3 (unlocked at 20 days)
+			if (highestLevel === 3 && currentStreak === 20) {
+				return { streak: currentStreak, message: null };
+			}
+		}
+
+		// Check yesterday's progress for highest level
+		const yesterdayDoc = await getDoc(getDailyProgressDocRef(userId, highestLevel, YESTERDAY));
+
+		// If no yesterday record, check if this is a level transition day
+		if (!yesterdayDoc.exists()) {
+			// Check previous level's progress if this is a newly unlocked level
+			const previousLevelDoc = await getDoc(
+				getDailyProgressDocRef(userId, highestLevel - 1, YESTERDAY)
+			);
+
+			if (previousLevelDoc.exists() && previousLevelDoc.data()?.progress === 100) {
+				return { streak: currentStreak, message: null };
+			}
+		} else if (yesterdayDoc.data()?.progress === 100) {
+			return { streak: currentStreak, message: null };
+		}
+
+		// Reset streak if no valid progress found
+		await setDoc(
+			streakRef,
+			{
+				currentStreak: 0,
+				lastUpdated: serverTimestamp(),
+				lastResetStreak: currentStreak
+			},
+			{ merge: true }
+		);
+
+		return {
+			streak: 0,
+			message: `Streak reset! Make sure to complete your daily tasks to maintain your streak.`
+		};
+	};
+
 	const initialize = async (userId) => {
 		set({ ...get({ subscribe }), loading: true });
 
 		try {
-			// console.log(`Initializing daily progress for user ${userId}`);
 			const userDoc = await getDoc(getUserDoc(userId));
 			if (!userDoc.exists()) throw new Error('User document not found');
 
 			const userData = userDoc.data();
-			// console.log('User data:', userData);
 			const { data: streakData } = await getFirestoreDoc(getStreakRef(userId));
-			const currentStreak = streakData?.currentStreak || 0;
-			// console.log('Current streak:', currentStreak);
+			let currentStreak = streakData?.currentStreak || 0;
 
-			const { unlockedLevels } = await updateUnlockedLevels(userId, currentStreak);
-			// console.log('Unlocked levels:', unlockedLevels);
+			const unlockedLevels = new Set(userData.unlockedLevels || [1]);
+
+			const { streak: validatedStreak, message } = await validateStreak(
+				userId,
+				currentStreak,
+				unlockedLevels
+			);
+			if (message) {
+				notificationStore.set({ show: true, message, type: 'warning' });
+			}
+			currentStreak = validatedStreak;
+
+			const { unlockedLevels: updatedLevels } = await updateUnlockedLevels(
+				userId,
+				currentStreak
+			);
 
 			const levelData = {};
-			const loadPromises = Array.from(unlockedLevels).map((level) =>
+			const loadPromises = Array.from(updatedLevels).map((level) =>
 				loadTodayProgress(userId, level, TODAY)
 			);
 
 			const progressResults = await Promise.all(loadPromises);
-			// console.log('Progress results:', progressResults);
 
-			Array.from(unlockedLevels).forEach((level, index) => {
+			Array.from(updatedLevels).forEach((level, index) => {
 				if (progressResults[index]) {
 					levelData[level] = progressResults[index];
 				}
@@ -216,10 +272,9 @@ const createDailyProgressStore = () => {
 				streak: currentStreak,
 				levelStartDates: userData.levelStartDates || {},
 				hasTodayProgress: Object.keys(levelData).length > 0,
-				unlockedLevels
+				unlockedLevels: updatedLevels
 			});
 		} catch (error) {
-			// console.error('Initialize error:', error);
 			set({
 				levels: {},
 				loading: false,
@@ -237,7 +292,6 @@ const createDailyProgressStore = () => {
 		if (!userId || !progressData) return false;
 
 		try {
-			// console.log(`Saving progress for user ${userId} at level ${progressData.level}`);
 			const level = progressData.level;
 			const today = getFormattedDate();
 
@@ -254,8 +308,6 @@ const createDailyProgressStore = () => {
 			);
 
 			const { streak: newStreak, unlockedLevels } = await handleStreak(userId, progressData);
-			// console.log('New streak:', newStreak);
-			// console.log('Updated unlocked levels:', unlockedLevels);
 
 			update((state) => ({
 				...state,
@@ -269,7 +321,6 @@ const createDailyProgressStore = () => {
 
 			return true;
 		} catch (error) {
-			// console.error('Save progress error:', error);
 			update((s) => ({ ...s, error: error.message }));
 			return false;
 		}

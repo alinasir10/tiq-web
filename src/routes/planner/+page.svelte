@@ -6,6 +6,7 @@
 	import { serverTimestamp } from 'firebase/firestore';
 	import { userStore } from '$lib/stores/userStore';
 	import { dailyProgressStore } from '$lib/stores/dailyProgressStore';
+	import { notificationStore } from '$lib/stores/notificationStore';
 
 	const levels = [
 		{
@@ -183,6 +184,17 @@
 </script>
 
 <div class="flex w-full flex-col items-center justify-center gap-8 p-8">
+	{#if $notificationStore.show}
+		<Alert
+			color={$notificationStore.type === 'warning' ? 'yellow' : 'green'}
+			dismissable
+			on:dismiss={() => notificationStore.set({ ...notificationStore, show: false })}
+		>
+			<div>
+				{@html $notificationStore.message}
+			</div>
+		</Alert>
+	{/if}
 	{#if isAuthChecking || isLoading}
 		<div class="flex min-h-screen w-full items-center justify-center">
 			<div class="text-center">
