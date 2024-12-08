@@ -575,9 +575,6 @@
 						Level {selectedLevel} Progress - Week {getCurrentWeek(
 							selectedMember.levelStartDates[selectedLevel]
 						)}
-						Level {selectedLevel} Progress - Week {getCurrentWeek(
-							selectedMember.levelStartDates[selectedLevel]
-						)}
 					{/if}
 				</h3>
 				{#if currentView === 'progress'}
