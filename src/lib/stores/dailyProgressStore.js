@@ -267,11 +267,25 @@ const createDailyProgressStore = () => {
 		}
 	};
 
+	const reset = () => {
+		set({
+			levels: {},
+			loading: true,
+			error: null,
+			initialized: false,
+			streak: 0,
+			levelStartDates: {},
+			hasTodayProgress: false,
+			unlockedLevels: new Set([1])
+		});
+	};
+
 	return {
 		subscribe,
 		initialize,
 		saveProgress,
-		getFormattedDate
+		getFormattedDate,
+		reset
 	};
 };
 
