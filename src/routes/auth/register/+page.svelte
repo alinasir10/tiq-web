@@ -7,6 +7,8 @@
 	import { doc, setDoc } from 'firebase/firestore';
 	import { goto } from '$app/navigation';
 	import { userStore } from '$lib/stores/userStore';
+	import { page } from '$app/stores';
+	import { groupStore } from '$lib/stores/groupStore';
 
 	let email = '';
 	let password = '';
@@ -15,6 +17,13 @@
 	let phoneNumber = '';
 	let errorMessage = '';
 	let loading = false;
+	let inviteId = '';
+
+	$: {
+		if ($page.url.searchParams.has('invite')) {
+			inviteId = $page.url.searchParams.get('invite');
+		}
+	}
 
 	const handleSignup = async () => {
 		if (loading) return;
@@ -28,25 +37,36 @@
 		}
 
 		try {
+			// Create auth user
 			const userCredential = await createUserWithEmailAndPassword(
 				firebase.auth,
 				email,
 				password
 			);
 
+			// Update auth profile
 			await updateProfile(userCredential.user, {
 				displayName
 			});
 
+			// Store user data in Firestore with consistent name
 			const userDocRef = doc(firebase.db, 'users', userCredential.user.uid);
 			await setDoc(userDocRef, {
-				name: displayName,
-				level: 1
+				name: displayName, // Store the same name as in auth profile
+				email: email, // Store email for easier queries
+				level: 1,
+				phoneNumber,
+				createdAt: new Date()
 			});
 
 			userStore.refresh(userCredential.user);
 
-			goto('/planner');
+			if (inviteId) {
+				await groupStore.acceptInvite(inviteId, userCredential.user.uid);
+			}
+
+			const redirectUrl = $page.url.searchParams.get('redirect') || '/planner';
+			goto(redirectUrl);
 		} catch (error) {
 			console.error('Registration failed:', error);
 			errorMessage = getFriendlyErrorMessage(error.code);
@@ -67,6 +87,9 @@
 				return 'An error occurred. Please try again later.';
 		}
 	};
+
+	$: queryParams = $page.url.searchParams.toString();
+	$: loginUrl = `/auth/login${queryParams ? `?${queryParams}` : ''}`;
 </script>
 
 <form on:submit|preventDefault={handleSignup} class="space-y-4">
@@ -116,7 +139,7 @@
 	<p class="mt-4 text-sm font-light text-gray-500 dark:text-gray-400">
 		Already have an account?
 		<a
-			href="/auth/login"
+			href={loginUrl}
 			class="font-medium text-primary-600 hover:underline dark:text-primary-500">Sign In</a
 		>
 	</p>

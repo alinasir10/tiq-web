@@ -57,21 +57,44 @@
 	$: ({ user: loggedInUser, loading: userLoading } = $userStore);
 
 	$: ({
+		levels: progressLevels,
 		loading: storeLoading,
 		initialized,
 		streak,
-		userLevel,
+		unlockedLevels,
+		levelStartDates,
 		hasTodayProgress
 	} = $dailyProgressStore);
 
+	$: currentUnlockedLevels = unlockedLevels || new Set([1]);
+
+	// Calculate current level for display
+	$: displayLevel = selectedLevel + 1;
+
+	const { getFormattedDate } = dailyProgressStore;
+
+	// Remove userLevel calculation since we use unlockedLevels instead
+
 	$: isLoading = userLoading || (loggedInUser && storeLoading);
-	$: displayLevel = userLevel || 1;
 
 	$: completedTasks = currentLevel.tasks.filter((task) => task.completed).length;
 	$: progress = Math.round((completedTasks / currentLevel.tasks.length) * 100);
-	$: daysUntilNextLevel = taskUnlockDays[selectedLevel + 1]
-		? Math.max(0, taskUnlockDays[selectedLevel + 1] - streak)
-		: 0;
+
+	// Helper function to check if next level is locked
+	const getNextLockedLevel = (currentLevel) => {
+		const nextLevel = currentLevel + 1;
+		return nextLevel <= 3 && !currentUnlockedLevels.has(nextLevel) ? nextLevel : null;
+	};
+
+	// Helper to get days until unlock for a level
+	const getDaysUntilUnlock = (level) => {
+		const requiredStreak = level === 3 ? 20 : 10;
+		return Math.max(0, requiredStreak - streak);
+	};
+
+	// Replace daysUntilNextLevel calculation with these
+	$: nextLockedLevel = getNextLockedLevel(selectedLevel + 1);
+	$: daysUntilUnlock = nextLockedLevel ? getDaysUntilUnlock(nextLockedLevel) : 0;
 
 	$: if (initialized && !hasTodayProgress) {
 		const yesterdayStreak = streak - 1;
@@ -92,44 +115,14 @@
 		currentLevel.tasks[taskIndex].completed = !currentLevel.tasks[taskIndex].completed;
 	};
 
-	const isLevelAccessible = (levelIndex) => {
-		if (storeLoading || !initialized) return false;
-		if (streak >= 30) return true;
-
-		if (streak >= 20) return levelIndex === 2;
-		if (streak >= 10) return levelIndex === 1;
-		return levelIndex === 0;
-	};
-
 	const changeLevel = (levelIndex) => {
-		if (!isLevelAccessible(levelIndex)) return;
 		selectedLevel = levelIndex;
-
-		currentLevel = {
-			...levels[levelIndex],
-			tasks:
-				$dailyProgressStore.data?.level === levelIndex + 1
-					? $dailyProgressStore.data.tasks
-					: [...levels[levelIndex].tasks]
-		};
 	};
 
-	const getLevelButtonState = (index) => {
-		if (streak >= 30) return 'enabled';
-		if (index === selectedLevel) return 'selected';
-		if (!isLevelAccessible(index)) return 'disabled';
-		return 'enabled';
+	$: currentLevel = progressLevels[selectedLevel + 1] || {
+		...levels[selectedLevel],
+		tasks: levels[selectedLevel].tasks.map((t) => ({ ...t }))
 	};
-
-	$: currentLevel = $dailyProgressStore.data
-		? {
-				...levels[selectedLevel],
-				tasks:
-					selectedLevel === $dailyProgressStore.data.level - 1
-						? $dailyProgressStore.data.tasks
-						: levels[selectedLevel].tasks
-			}
-		: levels[selectedLevel];
 
 	$: if (currentLevel) {
 		completedTasks = currentLevel.tasks.filter((task) => task.completed).length;
@@ -148,10 +141,10 @@
 
 		const progressData = {
 			userId: loggedInUser.uid,
-			date: serverTimestamp(),
 			level: selectedLevel + 1,
+			date: getFormattedDate(), // Use the imported function
 			progress,
-			completedTasks: completedTasks,
+			completedTasks,
 			totalTasks: currentLevel.tasks.length,
 			tasks: currentLevel.tasks
 		};
@@ -168,18 +161,15 @@
 			saveError = 'Failed to save progress. Please try again.';
 		} finally {
 			isSaving = false;
-			if (saveSuccess) {
-				setTimeout(() => {
-					saveSuccess = false;
-				}, 3000);
-			}
 		}
 	};
 
 	$: if (!storeLoading && initialized) {
-		if (streak >= 20) selectedLevel = 2;
-		else if (streak >= 10) selectedLevel = 1;
-		else selectedLevel = 0;
+		// Automatically select highest unlocked level
+		const highestUnlocked = Math.max(...Array.from(currentUnlockedLevels));
+		if (!currentUnlockedLevels.has(selectedLevel + 1)) {
+			selectedLevel = highestUnlocked - 1; // Convert to 0-based index
+		}
 	}
 </script>
 
@@ -225,9 +215,10 @@
 				<div class="mt-4 text-center font-bold text-green-600">
 					Congratulations! You've unlocked all levels! 🎉
 				</div>
-			{:else if daysUntilNextLevel > 0}
+			{:else if nextLockedLevel && daysUntilUnlock > 0 && nextLockedLevel !== 3}
 				<div class="mt-4 text-center text-orange-600">
-					Next level will be unlocked in {daysUntilNextLevel} day{daysUntilNextLevel > 1
+					Level {nextLockedLevel} will be unlocked in {daysUntilUnlock} day{daysUntilUnlock >
+					1
 						? 's'
 						: ''}.
 				</div>
@@ -236,22 +227,19 @@
 
 		<div class="flex gap-4">
 			{#each levels as level, index}
+				{@const levelNum = index + 1}
 				<button
-					class="rounded-md px-4 py-2 text-white {getLevelButtonState(index) ===
-					'selected'
+					class="rounded-md px-4 py-2 text-white {index === selectedLevel
 						? 'bg-orange-600'
-						: getLevelButtonState(index) === 'disabled'
-							? 'cursor-not-allowed bg-gray-400'
-							: 'bg-orange-400 hover:bg-orange-500'}"
+						: currentUnlockedLevels.has(levelNum)
+							? 'bg-orange-400 hover:bg-orange-500'
+							: 'cursor-not-allowed bg-gray-400'}"
 					on:click={() => changeLevel(index)}
-					disabled={!isLevelAccessible(index)}
+					disabled={!currentUnlockedLevels.has(levelNum)}
 				>
 					{level.name}
-					{#if !isLevelAccessible(index) && index > selectedLevel}
-						🔒
-					{/if}
-					{#if !isLevelAccessible(index) && index < selectedLevel}
-						✓
+					{#if !currentUnlockedLevels.has(levelNum)}
+						<span class="ml-2">🔒</span>
 					{/if}
 				</button>
 			{/each}

@@ -19,6 +19,7 @@
 		DropdownDivider,
 		Button
 	} from 'flowbite-svelte';
+	import { page } from '$app/stores';
 
 	onMount(() => {
 		userStore.initialize();
@@ -46,6 +47,9 @@
 		{ href: '/quran', label: 'Quran' },
 		{ href: '/groups', label: 'Groups' }
 	];
+
+	$: queryParams = $page.url.searchParams.toString();
+	$: authQueryString = queryParams ? `?${queryParams}` : '';
 </script>
 
 <Navbar class="border-b">
@@ -70,8 +74,10 @@
 				<DropdownItem on:click={handleLogout}>Sign out</DropdownItem>
 			</Dropdown>
 		{:else}
-			<Button href="/auth/login" class="ms-4" color="primary">Login</Button>
-			<Button href="/auth/register" class="ms-2" color="alternative">Register</Button>
+			<Button href="/auth/login{authQueryString}" class="ms-4" color="primary">Login</Button>
+			<Button href="/auth/register{authQueryString}" class="ms-2" color="alternative"
+				>Register</Button
+			>
 		{/if}
 		<NavHamburger />
 	</div>

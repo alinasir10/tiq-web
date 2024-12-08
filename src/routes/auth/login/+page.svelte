@@ -5,6 +5,7 @@
 	import { firebase } from '$lib/firebase.js'; // Updated import
 	import { signInWithEmailAndPassword } from 'firebase/auth';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 
 	let email = '';
 	let password = '';
@@ -12,14 +13,15 @@
 	let errorMessage = '';
 	let loading = false;
 
-	const handleLogin = async (event) => {
+	const handleLogin = async () => {
 		if (loading) return;
 		loading = true;
 		errorMessage = ''; // Reset the error message each time handleLogin is called
 
 		try {
 			await signInWithEmailAndPassword(firebase.auth, email, password); // Updated auth reference
-			goto('/planner'); // Redirect to planner after successful login
+			const redirectUrl = $page.url.searchParams.get('redirect') || '/planner';
+			goto(redirectUrl); // Redirect to planner after successful login
 		} catch (error) {
 			console.error('Login failed:', error);
 			errorMessage = getFriendlyErrorMessage(error.code);
@@ -43,6 +45,9 @@
 				return 'An error occurred. Please try again later.';
 		}
 	};
+
+	$: queryParams = $page.url.searchParams.toString();
+	$: registerUrl = `/auth/register${queryParams ? `?${queryParams}` : ''}`;
 </script>
 
 <form on:submit|preventDefault={handleLogin} class="space-y-4">
@@ -86,7 +91,7 @@
 	<p class="mt-4 text-sm font-light text-gray-500 dark:text-gray-400">
 		Don’t have an account yet?
 		<a
-			href="/auth/register"
+			href={registerUrl}
 			class="font-medium text-primary-600 hover:underline dark:text-primary-500">Register</a
 		>
 	</p>
