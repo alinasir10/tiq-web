@@ -1,6 +1,6 @@
 // @ts-nocheck
 import nodemailer from 'nodemailer';
-import { EMAIL_USER, EMAIL_PASS } from '$env/static/private';
+import { EMAIL_USER, EMAIL_PASS, PUBLIC_BASE_URL } from '$env/static/private';
 
 const transporter = nodemailer.createTransport({
 	host: 'smtp.gmail.com',
@@ -28,7 +28,7 @@ const createEmailTemplate = (groupName, inviteUrl) => `
 
 export async function POST({ request }) {
 	const { email, inviteId, groupName } = await request.json();
-	const inviteUrl = `http://localhost:5173/invite?invite=${inviteId}`;
+	const inviteUrl = `${PUBLIC_BASE_URL}/invite?invite=${inviteId}`;
 
 	try {
 		await transporter.sendMail({

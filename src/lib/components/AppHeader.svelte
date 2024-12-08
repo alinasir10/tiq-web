@@ -5,7 +5,7 @@
 	import { signOut } from 'firebase/auth';
 	import { firebase } from '$lib/firebase.js';
 	import { userStore } from '$lib/stores/userStore';
-	import { dailyProgressStore } from '$lib/stores/dailyProgressStore'; // Import dailyProgressStore
+	import { dailyProgressStore } from '$lib/stores/dailyProgressStore';
 	import {
 		Avatar,
 		Navbar,
@@ -21,11 +21,14 @@
 	} from 'flowbite-svelte';
 	import { page } from '$app/stores';
 
-	onMount(() => {
-		userStore.initialize();
+	let hasInitialized = false;
+
+	onMount(async () => {
+		await userStore.initialize();
+		hasInitialized = true;
 	});
 
-	$: if ($userStore.isAuthenticated && $userStore.user?.uid) {
+	$: if ($userStore.isAuthenticated && $userStore.user?.uid && !$dailyProgressStore.initialized) {
 		dailyProgressStore.initialize($userStore.user.uid);
 	}
 
@@ -50,6 +53,8 @@
 
 	$: queryParams = $page.url.searchParams.toString();
 	$: authQueryString = queryParams ? `?${queryParams}` : '';
+
+	$: shouldShowLoadingState = !hasInitialized && $userStore.loading;
 </script>
 
 <Navbar class="border-b">
@@ -61,7 +66,7 @@
 	</NavBrand>
 
 	<div class="flex items-center md:order-2">
-		{#if $userStore.loading}
+		{#if shouldShowLoadingState}
 			<div class="h-8 w-8 animate-pulse rounded-full bg-gray-200"></div>
 		{:else if $userStore.isAuthenticated}
 			<Avatar id="user-menu" />

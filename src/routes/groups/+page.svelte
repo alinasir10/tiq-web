@@ -98,22 +98,42 @@
 		}
 	}
 
-	$: canCreateGroup = initialized && $dailyProgressStore.unlockedLevels.has(3);
+	$: canCreateGroup = initialized && $dailyProgressStore.unlockedLevels.has(2);
 	$: isLoggedIn = $userStore.isAuthenticated;
+	$: isAuthChecking = $userStore.loading;
+	$: isDailyProgressInitialized = $dailyProgressStore.initialized;
+	$: isLoading = isAuthChecking || (isLoggedIn && (!isDailyProgressInitialized || !initialized));
 
 	async function initialize() {
-		if (!isLoggedIn) return;
+		if (!isLoggedIn || !$userStore.user?.uid) return;
+
+		if (!isLoggedIn || !$userStore.user?.uid) return;
+
 		try {
-			await Promise.all([
-				dailyProgressStore.initialize($userStore.user.uid),
-				groupStore.loadUserGroups($userStore.user.uid)
-			]);
-		} finally {
+			if (!isDailyProgressInitialized) {
+				await dailyProgressStore.initialize($userStore.user.uid);
+			}
+			await groupStore.loadUserGroups($userStore.user.uid);
+			if (!isDailyProgressInitialized) {
+				await dailyProgressStore.initialize($userStore.user.uid);
+			}
+			await groupStore.loadUserGroups($userStore.user.uid);
 			initialized = true;
+		} catch (error) {
+			console.error('Initialization error:', error);
+			error = 'Failed to load groups';
 		}
 	}
 
-	onMount(initialize);
+	$: if (isLoggedIn && isDailyProgressInitialized && !initialized) {
+		initialize();
+	}
+
+	onMount(() => {
+		if (isLoggedIn && !initialized) {
+			initialize();
+		}
+	});
 
 	async function loadGroupDetails(group) {
 		selectedGroup = group;
@@ -234,9 +254,7 @@
 
 	async function loadLevelProgress(level) {
 		try {
-			// console.log('Loading progress for level:', level);
 			const levelStartDate = selectedMember.levelStartDates[level];
-
 			if (!levelStartDate) {
 				throw new Error(`Missing startDate for level ${level}`);
 			}
@@ -247,15 +265,12 @@
 			});
 
 			if (progressData && progressData.some((day) => day !== null)) {
-				// console.log('Received progress data:', progressData);
 				memberProgress[level] = progressData;
 			} else {
-				// console.log('No progress data found, using defaults');
 				memberProgress[level] = Array(7).fill(null);
 			}
 			memberProgress = memberProgress;
 		} catch (error) {
-			// console.error('Error loading level progress:', error);
 			error = `Failed to load progress for level ${level}`;
 		}
 	}
@@ -320,29 +335,48 @@
 		});
 	}
 
+	function getWeekNumber(date, startDate) {
+		const diffTime = date.getTime() - startDate.getTime();
+		const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+		return Math.floor(diffDays / 7);
+	}
+
 	function getDateForDayIndex(dayIndex, startDate) {
+		// Convert timestamp to PKT date
 		const date = new Date(startDate.seconds * 1000);
 		const startDateStr = date.toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
 		const pktDate = new Date(startDateStr);
 		pktDate.setHours(0, 0, 0, 0);
-		pktDate.setDate(pktDate.getDate() + dayIndex);
-		return pktDate.toISOString().split('T')[0];
-	}
 
-	function isDateInFuture(dateString) {
 		const today = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
 		const todayPKT = new Date(today);
 		todayPKT.setHours(0, 0, 0, 0);
-		const date = new Date(dateString);
-		return date > todayPKT;
+
+		const currentWeek = getWeekNumber(todayPKT, pktDate);
+
+		const weekStartDate = new Date(pktDate);
+		weekStartDate.setDate(pktDate.getDate() + currentWeek * 7);
+
+		const targetDate = new Date(weekStartDate);
+		targetDate.setDate(weekStartDate.getDate() + dayIndex);
+
+		const formattedDate = targetDate.toLocaleString('en-US', {
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			timeZone: 'Asia/Karachi'
+		});
+		const [month, day, year] = formattedDate.split('/');
+		return `${year}-${month}-${day}`;
 	}
 
 	function getDateDisplay(dayIndex, startDate) {
 		const dateStr = getDateForDayIndex(dayIndex, startDate);
 		const date = new Date(dateStr);
+
 		return {
 			date: dateStr,
-			display: `Day ${dayIndex + 1}`,
+			display: `Day ${dayIndex + 1}`, // Simplified back to original
 			shortDate: date.toLocaleDateString('en-US', {
 				month: 'short',
 				day: 'numeric',
@@ -350,21 +384,70 @@
 			})
 		};
 	}
+
+	let futureDatesCache = new Map();
+
+	function isDateInFuture(dateString) {
+		if (futureDatesCache.has(dateString)) {
+			return futureDatesCache.get(dateString);
+		}
+
+		const today = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+		const todayPKT = new Date(today);
+		todayPKT.setHours(0, 0, 0, 0);
+
+		const inputDate = new Date(dateString).toLocaleString('en-US', {
+			timeZone: 'Asia/Karachi'
+		});
+		const datePKT = new Date(inputDate);
+		datePKT.setHours(0, 0, 0, 0);
+
+		const isFuture = datePKT > todayPKT;
+		futureDatesCache.set(dateString, isFuture);
+		return isFuture;
+	}
+
+	$: if (selectedLevel) {
+		futureDatesCache.clear();
+	}
+
+	function getCurrentWeek(startDate) {
+		const start = new Date(startDate.seconds * 1000);
+		const startDateStr = start.toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+		const pktDate = new Date(startDateStr);
+		pktDate.setHours(0, 0, 0, 0);
+
+		const today = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+		const todayPKT = new Date(today);
+		todayPKT.setHours(0, 0, 0, 0);
+
+		const diffTime = todayPKT.getTime() - pktDate.getTime();
+		const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+		return Math.floor(diffDays / 7) + 1;
+	}
 </script>
 
 <div class="container mx-auto p-8">
-	{#if !isLoggedIn}
+	{#if isLoading}
+		<div class="flex min-h-screen w-full items-center justify-center">
+			<div class="text-center">
+				<Spinner size="12" class="mb-4" />
+				<p class="text-gray-600">
+					{#if isAuthChecking}
+						Checking authentication...
+					{:else if !isDailyProgressInitialized}
+						Initializing...
+					{:else}
+						Loading groups...
+					{/if}
+				</p>
+			</div>
+		</div>
+	{:else if !isLoggedIn}
 		<div class="text-center">
 			<h2 class="mb-4 text-2xl font-bold">Login Required</h2>
 			<p class="mb-4">Please login to access groups.</p>
 			<Button href="/auth/login">Login</Button>
-		</div>
-	{:else if !initialized}
-		<div class="flex min-h-[50vh] items-center justify-center">
-			<div class="text-center">
-				<Spinner size="8" />
-				<p class="mt-4">Loading groups...</p>
-			</div>
 		</div>
 	{:else}
 		<div class="mb-8 flex items-center justify-between">
@@ -372,7 +455,7 @@
 			{#if canCreateGroup}
 				<Button on:click={() => (modals.create = true)}>Create Group</Button>
 			{:else}
-				<p class="text-orange-600">Reach Level 3 to create groups!</p>
+				<p class="text-orange-600">Reach Level 2 to create groups!</p>
 			{/if}
 		</div>
 
@@ -489,7 +572,9 @@
 					{#if currentView === 'levels'}
 						{selectedMember.name}'s Levels
 					{:else if currentView === 'progress'}
-						Level {selectedLevel} Progress
+						Level {selectedLevel} Progress - Week {getCurrentWeek(
+							selectedMember.levelStartDates[selectedLevel]
+						)}
 					{/if}
 				</h3>
 				{#if currentView === 'progress'}
@@ -552,13 +637,13 @@
 											dayIndex,
 											selectedMember.levelStartDates[selectedLevel]
 										)}
+										{@const dayData = memberProgress[selectedLevel]?.[dayIndex]}
+										{@const isFuture = isDateInFuture(dateString)}
 										<td class="px-2 py-1 text-center">
-											{#if isDateInFuture(dateString)}
-												<span class="text-gray-400">–</span>
-											{:else}
-												{@const dayData =
-													memberProgress[selectedLevel]?.[dayIndex]}
-												{#if dayData && Array.isArray(dayData.tasks)}
+											<div class="relative">
+												{#if isFuture}
+													<span class="text-gray-400">–</span>
+												{:else if dayData && dayData.tasks && Array.isArray(dayData.tasks)}
 													{#if dayData.tasks[taskIndex]?.completed}
 														<span class="text-green-600">✔</span>
 													{:else}
@@ -567,7 +652,7 @@
 												{:else}
 													<span class="text-red-600">✘</span>
 												{/if}
-											{/if}
+											</div>
 										</td>
 									{/each}
 								</tr>

@@ -6,6 +6,7 @@
 	import { serverTimestamp } from 'firebase/firestore';
 	import { userStore } from '$lib/stores/userStore';
 	import { dailyProgressStore } from '$lib/stores/dailyProgressStore';
+	import { notificationStore } from '$lib/stores/notificationStore';
 
 	const levels = [
 		{
@@ -66,7 +67,7 @@
 		hasTodayProgress
 	} = $dailyProgressStore);
 
-	$: currentUnlockedLevels = unlockedLevels || new Set([1]);
+	$: currentUnlockedLevels = loggedInUser ? unlockedLevels || new Set([1]) : new Set([1, 2, 3]);
 
 	// Calculate current level for display
 	$: displayLevel = selectedLevel + 1;
@@ -112,6 +113,10 @@
 	}
 
 	const markComplete = (taskIndex) => {
+		if (!loggedInUser) {
+			saveError = 'Please login to mark tasks as complete';
+			return;
+		}
 		currentLevel.tasks[taskIndex].completed = !currentLevel.tasks[taskIndex].completed;
 	};
 
@@ -170,15 +175,33 @@
 		if (!currentUnlockedLevels.has(selectedLevel + 1)) {
 			selectedLevel = highestUnlocked - 1; // Convert to 0-based index
 		}
+		// Recalculate nextLockedLevel and daysUntilUnlock
+		nextLockedLevel = getNextLockedLevel(selectedLevel + 1);
+		daysUntilUnlock = nextLockedLevel ? getDaysUntilUnlock(nextLockedLevel) : 0;
 	}
+
+	$: isAuthChecking = $userStore.loading;
 </script>
 
 <div class="flex w-full flex-col items-center justify-center gap-8 p-8">
-	{#if isLoading && $userStore.isAuthenticated}
+	{#if $notificationStore.show}
+		<Alert
+			color={$notificationStore.type === 'warning' ? 'yellow' : 'green'}
+			dismissable
+			on:dismiss={() => notificationStore.set({ ...notificationStore, show: false })}
+		>
+			<div>
+				{@html $notificationStore.message}
+			</div>
+		</Alert>
+	{/if}
+	{#if isAuthChecking || isLoading}
 		<div class="flex min-h-screen w-full items-center justify-center">
 			<div class="text-center">
 				<Spinner size="12" class="mb-4" />
-				<p class="text-gray-600">Loading your progress...</p>
+				<p class="text-gray-600">
+					{isAuthChecking ? 'Checking authentication...' : 'Loading your progress...'}
+				</p>
 			</div>
 		</div>
 	{:else}
@@ -225,6 +248,13 @@
 			{/if}
 		{/if}
 
+		{#if !loggedInUser}
+			<Alert color="yellow" class="mb-4">
+				<InfoCircleSolid slot="icon" class="h-5 w-5" />
+				Please login to mark tasks as complete and save your progress.
+			</Alert>
+		{/if}
+
 		<div class="flex gap-4">
 			{#each levels as level, index}
 				{@const levelNum = index + 1}
@@ -235,10 +265,10 @@
 							? 'bg-orange-400 hover:bg-orange-500'
 							: 'cursor-not-allowed bg-gray-400'}"
 					on:click={() => changeLevel(index)}
-					disabled={!currentUnlockedLevels.has(levelNum)}
+					disabled={!currentUnlockedLevels.has(levelNum) && loggedInUser}
 				>
 					{level.name}
-					{#if !currentUnlockedLevels.has(levelNum)}
+					{#if !currentUnlockedLevels.has(levelNum) && loggedInUser}
 						<span class="ml-2">🔒</span>
 					{/if}
 				</button>
@@ -256,6 +286,7 @@
 						on:keydown={(e) => e.key === 'Enter' && markComplete(index)}
 						type="button"
 						aria-pressed={task.completed}
+						disabled={!loggedInUser}
 					>
 						<span
 							class="flex h-8 w-8 items-center justify-center {task.completed

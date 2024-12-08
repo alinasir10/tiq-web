@@ -103,37 +103,52 @@ const createGroupStore = () => {
 		try {
 			const progressData = [];
 			const startTimestamp = new Date(startDate.seconds * 1000);
-			const pktDate = new Date(
-				startTimestamp.toLocaleString('en-US', {
-					timeZone: 'Asia/Karachi'
-				})
-			);
+			const startDateStr = startTimestamp.toLocaleString('en-US', {
+				timeZone: 'Asia/Karachi'
+			});
+			const pktDate = new Date(startDateStr);
 			pktDate.setHours(0, 0, 0, 0);
+
+			const today = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+			const todayPKT = new Date(today);
+			todayPKT.setHours(0, 0, 0, 0);
+
+			const diffTime = todayPKT.getTime() - pktDate.getTime();
+			const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+			const currentWeek = Math.floor(diffDays / 7);
+
+			const weekStartDate = new Date(pktDate);
+			weekStartDate.setDate(pktDate.getDate() + currentWeek * 7);
 
 			const batch = [];
 			const docRefs = [];
+			const dateStrings = [];
 
 			for (let i = 0; i < 7; i++) {
-				const currentDate = new Date(pktDate);
-				currentDate.setDate(pktDate.getDate() + i);
+				const currentDate = new Date(weekStartDate);
+				currentDate.setDate(weekStartDate.getDate() + i);
+				const formattedDate = currentDate.toLocaleString('en-US', {
+					year: 'numeric',
+					month: '2-digit',
+					day: '2-digit',
+					timeZone: 'Asia/Karachi'
+				});
+				const [month, day, year] = formattedDate.split('/');
+				const dateStr = `${year}-${month}-${day}`;
+				dateStrings.push(dateStr);
 
-				const year = currentDate.getFullYear();
-				const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-				const day = String(currentDate.getDate()).padStart(2, '0');
-				const formattedDate = `${year}-${month}-${day}`;
-
-				const docRef = doc(
-					firebase.db,
-					'dailyProgress',
-					`${memberId}_${level}_${formattedDate}`
-				);
+				const docRef = doc(firebase.db, 'dailyProgress', `${memberId}_${level}_${dateStr}`);
 				docRefs.push(docRef);
 				batch.push(getDoc(docRef));
 			}
 
 			const snapshots = await Promise.all(batch);
 			snapshots.forEach((docSnap, index) => {
-				progressData[index] = docSnap.exists() ? docSnap.data() : null;
+				const data = docSnap.exists() ? docSnap.data() : null;
+				if (data) {
+					data.date = dateStrings[index];
+				}
+				progressData[index] = data;
 			});
 
 			return progressData;
@@ -174,6 +189,15 @@ const createGroupStore = () => {
 		);
 
 		return members;
+	};
+
+	const reset = () => {
+		update(() => ({
+			loading: false,
+			initialized: false,
+			userGroups: [],
+			error: null
+		}));
 	};
 
 	return {
@@ -324,7 +348,8 @@ const createGroupStore = () => {
 
 		loadGroupMembers,
 		loadMemberLevels,
-		loadMemberWeeklyProgress
+		loadMemberWeeklyProgress,
+		reset
 	};
 };
 
