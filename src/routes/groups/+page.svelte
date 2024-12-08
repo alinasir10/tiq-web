@@ -107,7 +107,13 @@
 	async function initialize() {
 		if (!isLoggedIn || !$userStore.user?.uid) return;
 
+		if (!isLoggedIn || !$userStore.user?.uid) return;
+
 		try {
+			if (!isDailyProgressInitialized) {
+				await dailyProgressStore.initialize($userStore.user.uid);
+			}
+			await groupStore.loadUserGroups($userStore.user.uid);
 			if (!isDailyProgressInitialized) {
 				await dailyProgressStore.initialize($userStore.user.uid);
 			}
@@ -119,7 +125,6 @@
 		}
 	}
 
-	// Only run initialize when auth and daily progress are ready
 	$: if (isLoggedIn && isDailyProgressInitialized && !initialized) {
 		initialize();
 	}
@@ -343,23 +348,18 @@
 		const pktDate = new Date(startDateStr);
 		pktDate.setHours(0, 0, 0, 0);
 
-		// Get current date in PKT
 		const today = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
 		const todayPKT = new Date(today);
 		todayPKT.setHours(0, 0, 0, 0);
 
-		// Calculate current week number
 		const currentWeek = getWeekNumber(todayPKT, pktDate);
 
-		// Calculate the start of current week
 		const weekStartDate = new Date(pktDate);
 		weekStartDate.setDate(pktDate.getDate() + currentWeek * 7);
 
-		// Add day index to week start
 		const targetDate = new Date(weekStartDate);
 		targetDate.setDate(weekStartDate.getDate() + dayIndex);
 
-		// Format date in PKT
 		const formattedDate = targetDate.toLocaleString('en-US', {
 			year: 'numeric',
 			month: '2-digit',
@@ -385,7 +385,6 @@
 		};
 	}
 
-	// Add a new store for cached future dates
 	let futureDatesCache = new Map();
 
 	function isDateInFuture(dateString) {
@@ -393,12 +392,10 @@
 			return futureDatesCache.get(dateString);
 		}
 
-		// Convert both dates to PKT midnight for comparison
 		const today = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
 		const todayPKT = new Date(today);
 		todayPKT.setHours(0, 0, 0, 0);
 
-		// Convert input date to PKT
 		const inputDate = new Date(dateString).toLocaleString('en-US', {
 			timeZone: 'Asia/Karachi'
 		});
@@ -410,12 +407,10 @@
 		return isFuture;
 	}
 
-	// Clear cache when level changes
 	$: if (selectedLevel) {
 		futureDatesCache.clear();
 	}
 
-	// Add helper function to get current week
 	function getCurrentWeek(startDate) {
 		const start = new Date(startDate.seconds * 1000);
 		const startDateStr = start.toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
@@ -433,6 +428,22 @@
 </script>
 
 <div class="container mx-auto p-8">
+	{#if isLoading}
+		<div class="flex min-h-screen w-full items-center justify-center">
+			<div class="text-center">
+				<Spinner size="12" class="mb-4" />
+				<p class="text-gray-600">
+					{#if isAuthChecking}
+						Checking authentication...
+					{:else if !isDailyProgressInitialized}
+						Initializing...
+					{:else}
+						Loading groups...
+					{/if}
+				</p>
+			</div>
+		</div>
+	{:else if !isLoggedIn}
 	{#if isLoading}
 		<div class="flex min-h-screen w-full items-center justify-center">
 			<div class="text-center">
@@ -577,6 +588,9 @@
 					{#if currentView === 'levels'}
 						{selectedMember.name}'s Levels
 					{:else if currentView === 'progress'}
+						Level {selectedLevel} Progress - Week {getCurrentWeek(
+							selectedMember.levelStartDates[selectedLevel]
+						)}
 						Level {selectedLevel} Progress - Week {getCurrentWeek(
 							selectedMember.levelStartDates[selectedLevel]
 						)}
