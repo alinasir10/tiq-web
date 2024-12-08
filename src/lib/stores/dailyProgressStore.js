@@ -82,13 +82,21 @@ const createDailyProgressStore = () => {
 		const { data: streakData } = await getFirestoreDoc(getStreakRef(userId));
 		const currentStreak = streakData?.currentStreak || 0;
 
-		const todayDoc = await getDoc(getDailyProgressDocRef(userId, progressData.level, TODAY));
-		const hadTodayComplete = todayDoc.exists() && todayDoc.data()?.progress === 100;
-
 		const highestLevel = getHighestRequiredLevel(unlockedLevels);
 
-		if (progressData.level !== highestLevel || hadTodayComplete) {
+		if (progressData.level !== highestLevel) {
 			return { streak: currentStreak, unlockedLevels };
+		}
+
+		const todayDoc = await getDoc(getDailyProgressDocRef(userId, highestLevel, TODAY));
+		const previousProgress = todayDoc.exists() ? todayDoc.data()?.progress : 0;
+		if (previousProgress === 100 && progressData.progress < 100) {
+			const newStreak = Math.max(0, currentStreak - 1);
+			await setDoc(getStreakRef(userId), {
+				currentStreak: newStreak,
+				lastUpdated: serverTimestamp()
+			});
+			return { streak: newStreak, unlockedLevels };
 		}
 
 		const hadYesterdayComplete = await checkYesterdayProgress(
@@ -100,7 +108,7 @@ const createDailyProgressStore = () => {
 
 		let newStreak = currentStreak;
 		if (hadYesterdayComplete) {
-			if (is100PercentComplete && !hadTodayComplete) {
+			if (is100PercentComplete && previousProgress !== 100) {
 				newStreak = currentStreak + 1;
 			}
 		} else {
