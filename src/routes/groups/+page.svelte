@@ -444,22 +444,6 @@
 			</div>
 		</div>
 	{:else if !isLoggedIn}
-	{#if isLoading}
-		<div class="flex min-h-screen w-full items-center justify-center">
-			<div class="text-center">
-				<Spinner size="12" class="mb-4" />
-				<p class="text-gray-600">
-					{#if isAuthChecking}
-						Checking authentication...
-					{:else if !isDailyProgressInitialized}
-						Initializing...
-					{:else}
-						Loading groups...
-					{/if}
-				</p>
-			</div>
-		</div>
-	{:else if !isLoggedIn}
 		<div class="text-center">
 			<h2 class="mb-4 text-2xl font-bold">Login Required</h2>
 			<p class="mb-4">Please login to access groups.</p>
