@@ -183,7 +183,7 @@
 	$: isAuthChecking = $userStore.loading;
 </script>
 
-<div class="flex w-full flex-col items-center justify-center gap-8 p-8">
+<div class="flex w-full flex-col items-center justify-center gap-3 p-3 md:gap-8 md:p-8">
 	{#if $notificationStore.show}
 		<Alert
 			color={$notificationStore.type === 'warning' ? 'yellow' : 'green'}
@@ -206,30 +206,34 @@
 		</div>
 	{:else}
 		<div class="flex w-full rounded-lg border border-orange-500 bg-orange-50 shadow-lg">
-			<div class="flex w-full flex-col items-center justify-center gap-2 p-4">
-				<span class="text-sm text-orange-600">Name</span>
-				<span class="w-max text-2xl font-bold text-orange-800">
+			<div class="flex w-full flex-col items-center justify-center gap-1 p-2 md:gap-2 md:p-4">
+				<span class="text-xs text-orange-600 md:text-sm">Name</span>
+				<span
+					class="w-max max-w-[120px] truncate text-sm font-bold text-orange-800 md:max-w-[200px] md:text-2xl"
+				>
 					{loggedInUser ? loggedInUser?.displayName || loggedInUser?.email : 'Guest'}
 				</span>
 			</div>
 
 			<div
-				class="flex w-full flex-col items-center justify-center gap-2 border-x border-orange-300 p-4"
+				class="flex w-full flex-col items-center justify-center gap-1 border-x border-orange-300 p-2 md:gap-2 md:p-4"
 			>
-				<span class="text-sm text-orange-600">Level</span>
-				<span class="text-2xl font-bold text-orange-800">{displayLevel}</span>
+				<span class="text-xs text-orange-600 md:text-sm">Level</span>
+				<span class="text-sm font-bold text-orange-800 md:text-2xl">{displayLevel}</span>
 			</div>
 
 			<div
-				class="flex w-full flex-col items-center justify-center gap-2 border-r border-orange-300 p-4"
+				class="flex w-full flex-col items-center justify-center gap-1 border-r border-orange-300 p-2 md:gap-2 md:p-4"
 			>
-				<span class="text-sm text-orange-600">Progress</span>
-				<span class="text-2xl font-bold text-orange-800">{progress}%</span>
+				<span class="text-xs text-orange-600 md:text-sm">Progress</span>
+				<span class="text-sm font-bold text-orange-800 md:text-2xl">{progress}%</span>
 			</div>
 
-			<div class="flex w-full flex-col items-center justify-center gap-2 p-4">
-				<span class="text-sm text-orange-600">Streak</span>
-				<span class="w-max text-2xl font-bold text-orange-800">{streak} days</span>
+			<div class="flex w-full flex-col items-center justify-center gap-1 p-2 md:gap-2 md:p-4">
+				<span class="text-xs text-orange-600 md:text-sm">Streak</span>
+				<span class="w-max text-sm font-bold text-orange-800 md:text-2xl"
+					>{streak} days</span
+				>
 			</div>
 		</div>
 
@@ -255,11 +259,12 @@
 			</Alert>
 		{/if}
 
-		<div class="flex gap-4">
+		<div class="flex flex-wrap justify-center gap-2 md:gap-4">
 			{#each levels as level, index}
 				{@const levelNum = index + 1}
 				<button
-					class="rounded-md px-4 py-2 text-white {index === selectedLevel
+					class="rounded-md px-3 py-2 text-sm text-white md:px-4 md:py-2 md:text-base {index ===
+					selectedLevel
 						? 'bg-orange-600'
 						: currentUnlockedLevels.has(levelNum)
 							? 'bg-orange-400 hover:bg-orange-500'
@@ -269,7 +274,7 @@
 				>
 					{level.name}
 					{#if !currentUnlockedLevels.has(levelNum) && loggedInUser}
-						<span class="ml-2">🔒</span>
+						<span class="ml-1 md:ml-2">🔒</span>
 					{/if}
 				</button>
 			{/each}

@@ -12,7 +12,8 @@
 		invite: false,
 		details: false,
 		revoke: false,
-		progress: false
+		progress: false,
+		confirm: false // new modal for confirmations
 	};
 
 	let groupName = '';
@@ -33,6 +34,10 @@
 	let showMemberDetailsModal = false;
 	let showLevelDetailsModal = false;
 	let selectedLevel = null;
+
+	let confirmAction = null; // stores the action to be executed on confirmation
+	let confirmMessage = ''; // stores the message to show in confirmation modal
+	let confirmTitle = ''; // stores the title for confirmation modal
 
 	const openMemberDetails = (member) => {
 		selectedMember = member;
@@ -206,15 +211,36 @@
 		}
 	}
 
-	async function removeMember(groupId, memberId) {
-		if (!confirm('Are you sure you want to remove this member?')) return;
-		try {
-			await groupStore.removeMember(groupId, memberId);
-			success = 'Member removed successfully!';
-			await groupStore.loadUserGroups($userStore.user.uid);
-		} catch (err) {
-			error = 'Failed to remove member';
+	async function showConfirmation(title, message, action) {
+		confirmTitle = title;
+		confirmMessage = message;
+		confirmAction = action;
+		modals.confirm = true;
+	}
+
+	async function handleConfirm() {
+		if (confirmAction) {
+			await confirmAction();
+			modals.confirm = false;
+			confirmAction = null;
 		}
+	}
+
+	async function removeMember(groupId, memberId) {
+		await showConfirmation(
+			'Remove Member',
+			'Are you sure you want to remove this member?',
+			async () => {
+				try {
+					await groupStore.removeMember(groupId, memberId);
+					success = 'Member removed successfully!';
+					await groupStore.loadUserGroups($userStore.user.uid);
+					await loadGroupDetails(selectedGroup); // Refresh group details
+				} catch (err) {
+					error = 'Failed to remove member';
+				}
+			}
+		);
 	}
 
 	async function handleRevokeInvite() {
@@ -425,6 +451,46 @@
 		const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 		return Math.floor(diffDays / 7) + 1;
 	}
+
+	async function handleDeleteGroup(groupId) {
+		await showConfirmation(
+			'Delete Group',
+			'Are you sure you want to delete this group? This action cannot be undone.',
+			async () => {
+				loading = true;
+				try {
+					await groupStore.deleteGroup(groupId);
+					success = 'Group deleted successfully';
+					modals.details = false;
+					await groupStore.loadUserGroups($userStore.user.uid);
+				} catch (err) {
+					error = 'Failed to delete group';
+				} finally {
+					loading = false;
+				}
+			}
+		);
+	}
+
+	async function handleLeaveGroup(groupId) {
+		await showConfirmation(
+			'Leave Group',
+			'Are you sure you want to leave this group?',
+			async () => {
+				loading = true;
+				try {
+					await groupStore.removeMember(groupId, $userStore.user.uid);
+					success = 'Left group successfully';
+					modals.details = false;
+					await groupStore.loadUserGroups($userStore.user.uid);
+				} catch (err) {
+					error = 'Failed to leave group';
+				} finally {
+					loading = false;
+				}
+			}
+		);
+	}
 </script>
 
 <div class="container mx-auto p-8">
@@ -488,21 +554,38 @@
 			{/each}
 		</div>
 
-		<Modal bind:open={modals.details} size="md">
+		<Modal bind:open={modals.details} size="sm">
 			{#if selectedGroup}
 				<div class="mb-4 flex items-center justify-between">
 					<h3 class="text-lg font-bold">{selectedGroup.name}</h3>
-					{#if selectedGroup.ownerId === $userStore.user.uid}
-						<Button
-							size="xs"
-							on:click={() => {
-								modals.details = false;
-								modals.invite = true;
-							}}
-						>
-							Invite Member
-						</Button>
-					{/if}
+					<div class="flex gap-2">
+						{#if selectedGroup.ownerId === $userStore.user.uid}
+							<Button
+								size="xs"
+								on:click={() => {
+									modals.details = false;
+									modals.invite = true;
+								}}
+							>
+								Invite Member
+							</Button>
+							<Button
+								color="red"
+								size="xs"
+								on:click={() => handleDeleteGroup(selectedGroup.id)}
+							>
+								Delete Group
+							</Button>
+						{:else}
+							<Button
+								color="red"
+								size="xs"
+								on:click={() => handleLeaveGroup(selectedGroup.id)}
+							>
+								Leave Group
+							</Button>
+						{/if}
+					</div>
 				</div>
 
 				{#if loadingDetails}
@@ -528,9 +611,21 @@
 											>Level {member.level}</span
 										>
 									</div>
-									<Button size="xs" on:click={() => openMemberLevels(member)}
-										>View</Button
-									>
+									<div class="flex gap-2">
+										<Button size="xs" on:click={() => openMemberLevels(member)}
+											>View</Button
+										>
+										{#if selectedGroup.ownerId === $userStore.user.uid && !member.isOwner}
+											<Button
+												color="red"
+												size="xs"
+												on:click={() =>
+													removeMember(selectedGroup.id, member.id)}
+											>
+												Remove
+											</Button>
+										{/if}
+									</div>
 								</div>
 							{/each}
 						</div>
@@ -566,7 +661,7 @@
 			{/if}
 		</Modal>
 
-		<Modal bind:open={modals.progress} size="md">
+		<Modal bind:open={modals.progress} size="sm">
 			<div class="mb-2 flex items-center justify-between">
 				<h3 class="text-lg font-bold">
 					{#if currentView === 'levels'}
@@ -718,7 +813,7 @@
 			</div>
 		</Modal>
 
-		<Modal bind:open={showMemberModal} size="xl">
+		<Modal bind:open={showMemberModal} size="sm">
 			{#if selectedMember}
 				<h3 class="mb-4 text-xl font-bold">{selectedMember.name}'s Weekly Progress</h3>
 
@@ -735,7 +830,7 @@
 			{/if}
 		</Modal>
 
-		<Modal bind:open={showMemberDetailsModal} size="lg">
+		<Modal bind:open={showMemberDetailsModal} size="sm">
 			{#if selectedMember}
 				<h3 class="mb-4 text-xl font-bold">{selectedMember.name}'s Details</h3>
 				<div class="space-y-4">
@@ -753,6 +848,24 @@
 					{/each}
 				</div>
 			{/if}
+		</Modal>
+
+		<Modal bind:open={modals.confirm} size="xs">
+			<div class="text-center">
+				<h3 class="mb-4 text-xl font-bold">{confirmTitle}</h3>
+				<p class="mb-6">{confirmMessage}</p>
+				<div class="flex justify-end gap-4">
+					<Button color="alternative" on:click={() => (modals.confirm = false)}
+						>Cancel</Button
+					>
+					<Button color="red" on:click={handleConfirm}>
+						{#if loading}
+							<Spinner class="mr-3" size="4" />
+						{/if}
+						Confirm
+					</Button>
+				</div>
+			</div>
 		</Modal>
 	{/if}
 </div>

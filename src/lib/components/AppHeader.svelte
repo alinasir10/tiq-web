@@ -65,7 +65,7 @@
 		>
 	</NavBrand>
 
-	<div class="flex items-center md:order-2">
+	<div class="flex flex-nowrap items-center md:order-2">
 		{#if shouldShowLoadingState}
 			<div class="h-8 w-8 animate-pulse rounded-full bg-gray-200"></div>
 		{:else if $userStore.isAuthenticated}
@@ -79,12 +79,19 @@
 				<DropdownItem on:click={handleLogout}>Sign out</DropdownItem>
 			</Dropdown>
 		{:else}
-			<Button href="/auth/login{authQueryString}" class="ms-4" color="primary">Login</Button>
-			<Button href="/auth/register{authQueryString}" class="ms-2" color="alternative"
-				>Register</Button
-			>
+			<div class="hidden md:flex md:space-x-2">
+				<Button href="/auth/login{authQueryString}" color="primary">Login</Button>
+				<Button href="/auth/register{authQueryString}" color="alternative">Register</Button>
+			</div>
+			<div class="md:hidden">
+				<Button
+					href="/auth/login{authQueryString}"
+					color="primary"
+					class="px-3 py-1 text-sm">Login</Button
+				>
+			</div>
 		{/if}
-		<NavHamburger />
+		<NavHamburger class="ml-2" />
 	</div>
 
 	<NavUl>

@@ -349,7 +349,28 @@ const createGroupStore = () => {
 		loadGroupMembers,
 		loadMemberLevels,
 		loadMemberWeeklyProgress,
-		reset
+		reset,
+
+		deleteGroup: async (groupId) => {
+			const groupRef = doc(firebase.db, 'groups', groupId);
+
+			// Delete all pending invites for this group
+			const invitesQuery = query(
+				collection(firebase.db, 'groupInvites'),
+				where('groupId', '==', groupId)
+			);
+			const invitesSnapshot = await getDocs(invitesQuery);
+
+			const batch = writeBatch(firebase.db);
+			invitesSnapshot.docs.forEach((doc) => {
+				batch.delete(doc.ref);
+			});
+
+			// Delete the group itself
+			batch.delete(groupRef);
+
+			await batch.commit();
+		}
 	};
 };
 
